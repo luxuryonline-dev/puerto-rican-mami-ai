@@ -11,6 +11,7 @@ import { runGeneration } from '@shipwords/jobs/runner';
 import { buildYirRequest } from '@shipwords/jobs/yir';
 import { core, jobsApi } from '../src/core.server';
 import { createDance, uploadMotion } from '../src/site/motion.server';
+import { checkout } from '../src/site/checkout.server';
 import { fixedReference, serveSiteMedia, siteMedia } from '../src/site/media.server';
 import { isSiteMedia, SITE_MEDIA } from '../src/site/media';
 import models from '../site.models';
@@ -67,6 +68,15 @@ const fetchOutput = async (input: string | URL | Request) => {
 test('Shipwords API flow: auth ï¿½ï¿½ uploads ï¿½ï¿½ original job lifecycle ï¿½ï¿½ result / refund', async t => {
   let userId: string; let left: string; let right: string; let motion: string;
   const reference = mp4();
+  await t.test('current packs keep prices and provide 1, 3 and 8 videos; old entitlements remain server-side', async () => {
+    assert.deepEqual(site.products.map(product => product.price.amount), [999, 2499, 4999]);
+    assert.deepEqual(site.products.map(product => product.kind === 'credits' ? product.credits / models[0].credits : null), [1, 3, 8]);
+    assert.equal(site.products.some(product => product.id === 'starter'), false);
+    const legacy = core.site.products.find(product => product.id === 'starter');
+    assert(legacy?.kind === 'credits');
+    assert.equal(legacy.credits, 30);
+    assert.equal(new Set(core.site.products.map(product => product.id)).size, core.site.products.length);
+  });
   await t.test('public config and auth work without payment credentials; billing still requires them', async () => {
     assert.equal(env.STRIPE_SECRET_KEY, undefined);
     assert.equal(env.STRIPE_WEBHOOK_SECRET, undefined);
@@ -86,6 +96,17 @@ test('Shipwords API flow: auth ï¿½ï¿½ uploads ï¿½ï¿½ original job lifecycle ï¿½ï
     } finally {
       delete env.STRIPE_SECRET_KEY;
     }
+  });
+  await t.test('new checkout rejects retired packs while preserving authentication for current packs', async () => {
+    env.STRIPE_SECRET_KEY = 'rk_live_local_fixture';
+    try {
+      const retired = await json(await checkout(request('/api/billing/checkout', { productId: 'starter' }, {}, false)), 400);
+      assert.equal(retired.error.code, 'pack_changed');
+      for (const product of site.products) {
+        await json(await checkout(request('/api/billing/checkout', { productId: product.id }, {}, false)), 401);
+      }
+      assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS count FROM orders').get()?.count, 0);
+    } finally { delete env.STRIPE_SECRET_KEY; }
   });
   await t.test('email OTP signs in without granting free generation credits', async () => {
     await json(await core.handleAuth(request('/api/auth/email-otp/send-verification-otp', { email: 'mami-flow@example.org', type: 'sign-in' })), 200);
