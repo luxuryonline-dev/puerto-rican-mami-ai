@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node ../../tools/dev-port.mjs vite dev",
     "build": "vite build",
-    "test": "node --test tests/motion-rules.test.mjs && node scripts/test-flow.mjs",
+    "test": "node --test tests/motion-rules.test.mjs tests/billing-readiness.test.mjs && node scripts/test-flow.mjs",
     "preview": "vite build --outDir .preview && node ../../tools/dev-port.mjs vite preview --outDir .preview",
     "typecheck": "paraglide-js compile --project ./project.inlang --outdir ./src/paraglide && tsr generate && wrangler types --include-runtime=false && tsc --noEmit",
     "check": "pnpm typecheck && pnpm build && node ../../tools/check-site.mjs .",

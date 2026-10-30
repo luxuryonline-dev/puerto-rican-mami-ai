@@ -1,4 +1,5 @@
 import { createServerFn } from '@tanstack/react-start';
+import { canUseLiveCheckout } from '~/site/billing-readiness';
 
 // Public config the browser needs (reCAPTCHA site key, Google client ID). Values come from wrangler vars or .dev.vars, not baked into the build.
 export const getPublicConfig = createServerFn({ method: 'GET' }).handler(async () => {
@@ -12,6 +13,6 @@ export const getPublicConfig = createServerFn({ method: 'GET' }).handler(async (
     mock: Boolean(mockMode(env as unknown as Parameters<typeof mockMode>[0])),
     previewOnly: false,
     media: await siteMedia(),
-    billingReady: Boolean(env.STRIPE_SECRET_KEY?.startsWith('sk_live_')) && !core.site.url.includes('example.com'),
+    billingReady: canUseLiveCheckout(core.site.url, env.STRIPE_SECRET_KEY),
   };
 });
