@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "puerto-rican-mami-ai",
+  "main": "src/server.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "upload_source_maps": true,
+  "routes": [{ "pattern": "puertoricanmamiai.com", "custom_domain": true }],
+  "vars": {
+    "APP_URL": "https://puertoricanmamiai.com",
+    "EMAIL_FROM": "noreply@puertoricanmamiai.com",
+    // To enable Rybbit, set this to your Rybbit API URL (e.g. https://rybbit.example.com/api) and add analytics.rybbit to site.config.ts.
+    "RYBBIT_UPSTREAM": ""
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "puerto-rican-mami-ai",
+      "database_id": "49c8b2d0-007d-41f2-821b-bd07521d8294",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "OUTPUTS", "bucket_name": "puerto-rican-mami-ai-outputs" }],
+  "send_email": [{ "name": "EMAIL" }],
+  "workflows": [
+    {
+      "name": "puerto-rican-mami-ai-generation",
+      "binding": "GENERATION_WORKFLOW",
+      "class_name": "GenerationWorkflow"
+    }
+  ]
+}
