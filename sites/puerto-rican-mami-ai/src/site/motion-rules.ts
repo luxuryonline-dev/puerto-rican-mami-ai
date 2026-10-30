@@ -1,5 +1,4 @@
 export const MAX_MOTION_BYTES = 30 * 1024 * 1024;
-export const MOTION_PATH = /^\/files\/assets\/motion\/[a-f0-9]{32}\.mp4$/;
 
 /** Read the movie duration instead of trusting client-supplied metadata. */
 export function mp4Duration(bytes: Uint8Array): number | null {

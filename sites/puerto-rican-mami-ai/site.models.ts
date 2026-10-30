@@ -1,6 +1,7 @@
 import { defineModels } from '@shipwords/jobs/models';
+import { SITE_MEDIA } from './src/site/media';
 
-// The create route replaces this placeholder with an owned MP4 before any job or charge.
+// The create route validates the operator's fixed R2 reference before any job or charge.
 export default defineModels([
   {
     id: 'mami-dance', name: 'Puerto Rican Mami dance', kind: 'video', upstream: 'yir',
@@ -12,7 +13,7 @@ export default defineModels([
         { id: 'right', label: 'Right dancer', required: false },
       ],
       segments: [{
-        id: 'dance', referenceVideo: 'assets/motion/not-configured.mp4', slots: ['left', 'right'],
+        id: 'dance', referenceVideo: SITE_MEDIA.reference, slots: ['left', 'right'],
         prompt: (images: Readonly<Record<string, string>>) => [
           'Edit @video_1.',
           `Replace the dancer on the left at the start with the adult in ${images.left?.replace(/^@image(\d+)$/, '@image_$1')}.`,

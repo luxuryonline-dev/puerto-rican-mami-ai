@@ -35,21 +35,25 @@ export class LocalD1 {
 }
 
 export class LocalR2 {
-  readonly objects = new Map<string, { bytes: ArrayBuffer; httpMetadata: any; customMetadata: any }>();
+  readonly objects = new Map<string, { bytes: ArrayBuffer; httpMetadata: any; customMetadata: any; etag: string }>();
+  private revision = 0;
   async put(key: string, value: any, options: any = {}) {
     const bytes = await new Response(value).arrayBuffer();
-    this.objects.set(key, { bytes, httpMetadata: options.httpMetadata ?? {}, customMetadata: options.customMetadata ?? {} });
+    this.objects.set(key, { bytes, httpMetadata: options.httpMetadata ?? {}, customMetadata: options.customMetadata ?? {}, etag: String(++this.revision) });
     return this.head(key);
   }
   async head(key: string) {
     const object = this.objects.get(key); if (!object) return null;
     return { key, size: object.bytes.byteLength, httpMetadata: object.httpMetadata, customMetadata: object.customMetadata,
-      httpEtag: '"local-test-etag"', writeHttpMetadata(headers: Headers) { if (object.httpMetadata.contentType) headers.set('content-type', object.httpMetadata.contentType); } };
+      etag: object.etag, httpEtag: `"${object.etag}"`, writeHttpMetadata(headers: Headers) { if (object.httpMetadata.contentType) headers.set('content-type', object.httpMetadata.contentType); } };
   }
-  async get(key: string) {
+  async get(key: string, options: any = {}) {
     const object = this.objects.get(key); if (!object) return null;
-    return { ...await this.head(key), body: new Response(object.bytes.slice(0)).body,
-      arrayBuffer: async () => object.bytes.slice(0) };
+    if (options.onlyIf?.etagMatches && options.onlyIf.etagMatches !== object.etag) return this.head(key);
+    const start = options.range?.offset ?? 0;
+    const bytes = object.bytes.slice(start, options.range ? start + options.range.length : undefined);
+    return { ...await this.head(key), body: new Response(bytes).body,
+      arrayBuffer: async () => bytes };
   }
   async delete(key: string) { this.objects.delete(key); }
 }

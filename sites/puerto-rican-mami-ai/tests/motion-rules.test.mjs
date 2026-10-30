@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MOTION_PATH, mp4Duration } from '../src/site/motion-rules.ts';
+import { mp4Duration } from '../src/site/motion-rules.ts';
+import { SITE_MEDIA, mediaUrl } from '../src/site/media.ts';
 
 function box(name, contents) {
   const out = Buffer.alloc(8 + contents.length);
@@ -22,7 +23,8 @@ test('rejects short, overlong, missing, truncated and malformed movie data',()=>
   const wrong=movie(5);wrong.writeUInt32BE(999999,16);assert.equal(mp4Duration(wrong),null);
   const zeroScale=movie(5);zeroScale.writeUInt32BE(0,44);assert.equal(mp4Duration(zeroScale),null);
 });
-test('permits only opaque site-owned reference paths, never arbitrary URLs or traversal',()=>{
-  assert(MOTION_PATH.test('/files/assets/motion/'+'a'.repeat(32)+'.mp4'));
-  for(const ref of ['https://example.com/a.mp4','/files/assets/motion/../secret.mp4','/files/assets/motion/video.mp4','/files/assets/motion/'+'a'.repeat(32)+'.mp4?url=x'])assert(!MOTION_PATH.test(ref));
+test('operator reference and sample have separate, versioned fixed paths',()=>{
+  assert.equal(SITE_MEDIA.reference, 'assets/site/reference.mp4');
+  assert.equal(SITE_MEDIA.example, 'assets/site/example.mp4');
+  assert.equal(mediaUrl(SITE_MEDIA.reference, '"version-1"'), '/files/assets/site/reference.mp4?v=version-1');
 });

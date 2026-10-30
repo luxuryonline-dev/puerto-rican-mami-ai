@@ -11,6 +11,8 @@ import { runGeneration } from '@shipwords/jobs/runner';
 import { buildYirRequest } from '@shipwords/jobs/yir';
 import { core, jobsApi } from '../src/core.server';
 import { createDance, uploadMotion } from '../src/site/motion.server';
+import { fixedReference, serveSiteMedia, siteMedia } from '../src/site/media.server';
+import { isSiteMedia, SITE_MEDIA } from '../src/site/media';
 import models from '../site.models';
 import site from '../site.config';
 import { env, LocalD1, LocalR2 } from './support/local-worker';
@@ -58,7 +60,8 @@ const fetchOutput = async (input: string | URL | Request) => {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
   assert.equal(url.origin, base, 'The integration flow must never call an external service.');
   assert(url.pathname.startsWith('/files/'));
-  return jobsApi.file(new Request(url), url.pathname.slice('/files/'.length));
+  const key = url.pathname.slice('/files/'.length);
+  return isSiteMedia(key) ? serveSiteMedia(new Request(url), key) : jobsApi.file(new Request(url), key);
 };
 
 test('Shipwords API flow: auth ï¿½ï¿½ uploads ï¿½ï¿½ original job lifecycle ï¿½ï¿½ result / refund', async t => {
@@ -93,14 +96,35 @@ test('Shipwords API flow: auth ï¿½ï¿½ uploads ï¿½ï¿½ original job lifecycle ï¿½ï
     assert.equal((await core.getUser(request('/api/auth/get-session')))?.id, userId);
     assert.equal((await getBalance(core.db, userId)).available, 0);
   });
-  await t.test('real photo handler and site reference handler accept media and record ownership', async () => {
+  await t.test('photos upload normally while visitors cannot upload or replace reference videos', async () => {
     const portrait = fs.readFileSync('public/mock-output.png');
     left = (await json(await jobsApi.upload(request('/api/uploads', portrait, { 'content-type': 'image/png' })), 201)).path;
     right = (await json(await jobsApi.upload(request('/api/uploads', portrait, { 'content-type': 'image/png' })), 201)).path;
-    const uploaded = await json(await uploadMotion(request('/api/motion-reference', reference, { 'content-type': 'video/mp4' })), 200);
-    motion = uploaded.path;
-    assert.equal(uploaded.duration, 15);
-    assert.equal((await bucket.head(motion.slice(7)))?.customMetadata.userId, userId);
+    const count = bucket.objects.size;
+    await json(await uploadMotion(request('/api/motion-reference', reference, { 'content-type': 'video/mp4' })), 405);
+    assert.equal(bucket.objects.size, count);
+    assert.equal((await siteMedia()).reference, null);
+    await bucket.put(SITE_MEDIA.reference, reference, { httpMetadata: { contentType: 'video/mp4' } });
+    await bucket.put(SITE_MEDIA.example, mp4(8), { httpMetadata: { contentType: 'video/mp4' } });
+    const media = await siteMedia();
+    motion = media.reference!.url;
+    assert.equal(media.reference!.duration, 15);
+    assert(media.example!.url.includes('example.mp4'));
+    assert.notEqual(media.example!.url, motion);
+  });
+  await t.test('operator videos support byte ranges, HEAD and ETag revalidation', async () => {
+    const range = await serveSiteMedia(new Request(base + motion, { headers: { range: 'bytes=0-7' } }), SITE_MEDIA.reference);
+    assert.equal(range.status, 206);
+    assert.equal(range.headers.get('content-range'), `bytes 0-7/${reference.length}`);
+    assert.deepEqual(Buffer.from(await range.arrayBuffer()), reference.subarray(0, 8));
+    const suffix = await serveSiteMedia(new Request(base + motion, { headers: { range: 'bytes=-4' } }), SITE_MEDIA.reference);
+    assert.deepEqual(Buffer.from(await suffix.arrayBuffer()), reference.subarray(-4));
+    const head = await serveSiteMedia(new Request(base + motion, { method: 'HEAD' }), SITE_MEDIA.reference);
+    assert.equal(head.status, 200); assert.equal(await head.text(), '');
+    const cached = await serveSiteMedia(new Request(base + motion, { headers: { 'if-none-match': head.headers.get('etag')! } }), SITE_MEDIA.reference);
+    assert.equal(cached.status, 304);
+    assert.equal((await serveSiteMedia(new Request(base + motion, { headers: { range: 'bytes=9999-' } }), SITE_MEDIA.reference)).status, 416);
+    assert.equal((await serveSiteMedia(new Request(base + motion), 'assets/secret.mp4')).status, 404);
   });
   await t.test('legacy free credits, pending payments, refunds and another user payment cannot bypass purchase', async () => {
     await grantCredits(core.db, { userId, amount: 20, source: 'signup', idemKey: 'legacy-signup-test' });
@@ -122,15 +146,27 @@ test('Shipwords API flow: auth ï¿½ï¿½ uploads ï¿½ï¿½ original job lifecycle ï¿½ï
     await blocked();
     await core.db.insert(payments).values({ ...fixture, id: 'pay_settled', paymentRef: 'settled', creditsGranted: 30 });
   });
-  await t.test('invalid origins, overlong clips, missing reference and another browser are rejected before charging', async () => {
-    assert.equal((await uploadMotion(request('/api/motion-reference', reference, { origin: 'https://unrelated.invalid', 'content-type': 'video/mp4' }))).status, 403);
-    assert.equal((await uploadMotion(request('/api/motion-reference', mp4(21), { 'content-type': 'video/mp4' }))).status, 400);
-    assert.equal((await createDance(request('/api/jobs', { modelId: models[0].id, slots: { left } }))).status, 400);
-    assert.equal((await createDance(request('/api/jobs', { modelId: models[0].id, motion, slots: { left } }, {}, false))).status, 403);
+  await t.test('missing or invalid operator reference rejects generation before charging', async () => {
+    const balance = (await getBalance(core.db, userId)).available;
+    await bucket.delete(SITE_MEDIA.reference);
+    assert.equal((await createDance(request('/api/jobs', { modelId: models[0].id, slots: { left } }))).status, 503);
+    await bucket.put(SITE_MEDIA.reference, mp4(21));
+    assert.equal((await createDance(request('/api/jobs', { modelId: models[0].id, slots: { left } }))).status, 503);
+    assert.equal((await getBalance(core.db, userId)).available, balance);
+    assert.equal(dispatched.length, 0);
+    await bucket.put(SITE_MEDIA.reference, reference, { httpMetadata: { contentType: 'video/mp4' } });
+    const updated = await fixedReference();
+    assert.notEqual(updated!.url, motion);
+    motion = updated!.url;
+  });
+  await t.test('invalid origins and anonymous generation are rejected before charging', async () => {
+    assert.equal((await createDance(request('/api/jobs', { modelId: models[0].id, slots: { left } }, { origin: 'https://unrelated.invalid' }))).status, 403);
+    assert.equal((await createDance(request('/api/jobs', { modelId: 'unknown', slots: { left } }))).status, 400);
+    assert.equal((await createDance(request('/api/jobs', { modelId: models[0].id, slots: { left } }, {}, false))).status, 401);
     assert.equal((await getBalance(core.db, userId)).available, 20);
   });
   async function create(slots: Record<string, string>) {
-    return (await json(await createDance(request('/api/jobs', { modelId: models[0].id, motion, slots })), 201)).job;
+    return (await json(await createDance(request('/api/jobs', { modelId: models[0].id, motion: 'https://attacker.invalid/override.mp4', slots })), 201)).job;
   }
   await t.test('duo submission passes one video and two photos to the provider and returns a downloadable mock result', async () => {
     const job = await create({ left, right });
@@ -143,6 +179,8 @@ test('Shipwords API flow: auth ï¿½ï¿½ uploads ï¿½ï¿½ original job lifecycle ï¿½ï
     assert.equal(submitted.length, 1);
     assert.deepEqual(submitted[0].references.map((ref: any) => ref.role), ['reference_video', 'reference_image', 'reference_image']);
     assert.equal(submitted[0].references[0].url, base + motion);
+    assert.equal(submitted[0].parameters.duration, 15);
+    assert(!submitted[0].references[0].url.includes('attacker.invalid'));
     assert(submitted[0].prompt.includes('@video_1') && submitted[0].prompt.includes('@image_1') && submitted[0].prompt.includes('@image_2'));
     const upstream = buildYirRequest(submitted[0]);
     assert.equal(upstream.input.type, 'reference');

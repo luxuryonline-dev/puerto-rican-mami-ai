@@ -11,8 +11,8 @@ import models from '../../site.models';
 const FAQ = [
   ['What is Puerto Rican Mami AI?', 'It is a way to remake the dance with your own photos. Your portrait supplies the appearance, while a reference video guides the choreography, timing and camera. This site is an independent creation tool.'],
   ['Can I make it with a friend?', 'Yes. Choose Duo and upload one photo per dancer. Photo 1 replaces the dancer on the left at the start; Photo 2 replaces the dancer on the right. The instructions follow those identities when they cross.'],
-  ['What does Solo change?', 'Solo replaces only the dancer initially on the left. Any other dancer remains as recorded in your reference. Use a one-person reference if you want a one-person result.'],
-  ['Why do I need a reference video?', 'A text prompt alone cannot reliably reproduce a particular routine. A real video reference gives the model the movements, sequence and framing to follow. Upload your own or a clip you have permission to process.'],
+  ['What does Solo change?', 'Solo replaces only the dancer initially on the left. Any other dancer in the fixed reference stays unchanged.'],
+  ['Which reference video is used?', 'Every generation uses the fixed dance reference displayed on this page. The site provides the routine, timing and camera. You only upload the dancer photos.'],
   ['Which photos work best?', 'Use one adult in each photo, a sharp visible face and a waist-up or full-body crop. Keep arms and shoulders visible, use even light and avoid sunglasses, face filters and heavy occlusion.'],
   ['Will the dance and sound match perfectly?', 'The reference guides the output, but AI may change identity, movement, timing or sound. Exact matching is not guaranteed. You can add a sound you are licensed to use in your video editor or the platform where you post.'],
   ['What does the local demo produce?', 'Local mock mode returns the reference clip unchanged to test uploads, job status and delivery. It does not animate or replace anyone. The page labels this mode and its results clearly.'],
@@ -22,7 +22,7 @@ const FAQ = [
 export const Route = createFileRoute('/')({
   head: () => pageHead(site, {
     title: 'Puerto Rican Mami AI �� Make Your Dance Video',
-    description: 'Create a Puerto Rican Mami AI dance video from one or two photos and your reference clip. Pick your dancers, follow the moves, and download your result.', path: '/',
+    description: 'Create a Puerto Rican Mami AI dance video from one or two photos and the featured dance reference. Pick your dancers, follow the moves, and download your result.', path: '/',
     jsonLd: [
       { '@type': 'WebApplication', name: site.name, applicationCategory: 'MultimediaApplication', operatingSystem: 'Web', url: site.url },
       { '@type': 'FAQPage', mainEntity: FAQ.map(([name, text]) => ({ '@type': 'Question', name, acceptedAnswer: { '@type': 'Answer', text } })) },
@@ -31,9 +31,9 @@ export const Route = createFileRoute('/')({
 });
 
 const root = getRouteApi('__root__');
-const STATE_KEY = 'mami:draft:v1';
-type Draft = { mode: 'solo' | 'duo'; left: string; right: string; motion: string; duration: number };
-const EMPTY: Draft = { mode: 'duo', left: '', right: '', motion: '', duration: 0 };
+const STATE_KEY = 'mami:draft:v2';
+type Draft = { mode: 'solo' | 'duo'; left: string; right: string };
+const EMPTY: Draft = { mode: 'duo', left: '', right: '' };
 const active = (job: PublicJob) => job.status === 'queued' || job.status === 'submitted';
 
 function Arrow({ down = false }: { down?: boolean }) { return <span aria-hidden="true">{down ? '��' : '�J'}</span>; }
@@ -50,6 +50,12 @@ function DanceArtwork() {
     <g className="dancer-two"><path d="m271 323-20 108h29l24-98m-5-11 17 103h28l-8-116" fill="#2b3531" /><path d="m267 245 44-2 24 80-75 9z" fill="#ff8068" /><path d="m273 255-36-35-6-29m75 63 37-22 29 2" fill="none" stroke="#ff8068" strokeWidth="25" strokeLinecap="round" /><circle cx="289" cy="213" r="24" fill="#9d6c4c" /><path d="m267 203 3-23 26-6 21 23-25-8z" fill="#222e24" /><path d="m253 429-12 13h43v-14m31-1v15h40l-13-15" fill="#e7e9d9" /></g>
     <g fill="#d9f96b"><path d="m67 155 4-12 4 12 12 4-12 4-4 12-4-12-12-4z" /><circle cx="354" cy="171" r="3" /></g>
   </svg>;
+}
+
+function VideoPlayer({ url, label }: { url: string; label: string }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [url]);
+  return failed ? <div className="media-empty"><strong>Video temporarily unavailable</strong><p>Please refresh and try again.</p></div> : <video src={url} controls playsInline preload="metadata" aria-label={label} onError={() => setFailed(true)} />;
 }
 
 function DancePage() {
@@ -72,28 +78,20 @@ function DancePage() {
       if (saved && (saved.mode === 'solo' || saved.mode === 'duo')) setDraft({
         mode: saved.mode, left: typeof saved.left === 'string' ? saved.left : '',
         right: typeof saved.right === 'string' ? saved.right : '',
-        motion: typeof saved.motion === 'string' ? saved.motion : '', duration: Number(saved.duration) || 0,
       });
     } catch {} setReady(true);
   }, []);
   useEffect(() => { if (ready) try { sessionStorage.setItem(STATE_KEY, JSON.stringify(draft)); } catch {} }, [draft, ready]);
 
-  async function upload(file: File | undefined, slot: 'left' | 'right' | 'motion') {
+  async function upload(file: File | undefined, slot: 'left' | 'right') {
     if (!file || uploadLock.current) return;
     setUploadError('');
-    if (slot === 'motion' ? (file.type !== 'video/mp4' || file.size > 30 * 1024 * 1024) : (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024)) {
-      setUploadError(slot === 'motion' ? 'Choose an MP4 up to 30 MB, 2�C20 seconds long.' : 'Choose a JPG, PNG or WebP photo up to 10 MB.'); return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+      setUploadError('Choose a JPG, PNG or WebP photo up to 10 MB.'); return;
     }
     uploadLock.current = true; setBusy(slot);
     try {
-      if (slot === 'motion') {
-        const response = await fetch('/api/motion-reference', { method: 'POST', headers: { 'content-type': 'video/mp4' }, body: file });
-        const result = await response.json() as { path?: string; duration?: number; error?: { message?: string } };
-        if (!response.ok || !result.path) throw new Error(result.error?.message ?? 'Reference upload failed.');
-        setDraft(d => ({ ...d, motion: result.path!, duration: result.duration ?? 0 }));
-      } else {
-        const path = await uploadReference(file); setDraft(d => ({ ...d, [slot]: path }));
-      }
+      const path = await uploadReference(file); setDraft(d => ({ ...d, [slot]: path }));
     } catch (error) { setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.'); }
     finally { setBusy(null); uploadLock.current = false; }
   }
@@ -102,8 +100,8 @@ function DancePage() {
     if (submissionLock.current || running || generation.submitting || busy) return;
     submissionLock.current = true;
     setSubmitError('');
-    const input: GenerateInput & { motion: string } = {
-      modelId: models[0].id, motion: draft.motion,
+    const input: GenerateInput = {
+      modelId: models[0].id,
       slots: { left: draft.left, ...(draft.mode === 'duo' ? { right: draft.right } : {}) },
     };
     try {
@@ -113,8 +111,9 @@ function DancePage() {
   }
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!draft.left || (draft.mode === 'duo' && !draft.right) || !draft.motion) { setSubmitError('Add the selected dancers and a reference video first.'); return; }
-    if (!consent) { setSubmitError('Confirm permission for the photos and video before continuing.'); return; }
+    if (!draft.left || (draft.mode === 'duo' && !draft.right)) { setSubmitError('Add the selected dancer photos first.'); return; }
+    if (!config.media.reference) { setSubmitError('The dance reference is being prepared. Please try again later.'); return; }
+    if (!consent) { setSubmitError('Confirm permission for the photos before continuing.'); return; }
     if (!session.data?.user) { openSignIn(() => void submit(), 'mami_generate'); return; }
     await submit();
   }
@@ -125,22 +124,27 @@ function DancePage() {
         <div className="eyebrow"><span className="live-dot" /> PHOTO �� DANCE VIDEO</div>
         <h1>Puerto Rican<br />Mami <span className="outline-type">AI.</span><span className="headline-star" aria-hidden="true">?</span></h1>
         <p className="hero-tagline">Your face.<br /><span>Those moves.</span></p>
-        <p className="hero-description">Put yourself in the dance. Add your photo, bring a friend, and let your reference clip lead the way.</p>
+        <p className="hero-description">Put yourself in the dance. Add your photo, bring a friend, and let the featured dance reference lead the way.</p>
         <a className="button primary hero-cta" href="#create">Make it yours <Arrow /></a>
-        <div className="hero-facts"><span>01�C02 PHOTOS</span><span>YOUR REFERENCE</span><span>NO PROMPT NEEDED</span></div>
+        <div className="hero-facts"><span>01�C02 PHOTOS</span><span>FIXED REFERENCE</span><span>NO PROMPT NEEDED</span></div>
       </div>
-      <div className="reference-stage">
+      <div className="reference-stage" id="reference-video">
         <div className="stage-top"><span>THE MOVES START HERE</span><span className="stage-dot" /></div>
-        {draft.motion ? <video src={draft.motion} controls playsInline aria-label="Your dance reference video" /> : <DanceArtwork />}
-        <div className="stage-bottom"><span>{draft.motion ? `${draft.duration.toFixed(1)} SEC �� YOUR REFERENCE` : 'DANCE ILLUSTRATION �� ADD YOUR CLIP BELOW'}</span><span>�L �J</span></div>
+        {config.media.reference ? <VideoPlayer url={config.media.reference.url} label="Fixed dance reference video" /> : <DanceArtwork />}
+        <div className="stage-bottom"><span>{config.media.reference ? `${config.media.reference.duration.toFixed(1)} SEC �� FIXED DANCE REFERENCE` : 'REFERENCE VIDEO COMING SOON'}</span><span>01 / REFERENCE</span></div>
         <span className="stage-sticker">better<br />with a friend.</span>
       </div>
     </section>
     <div className="marquee-strip" aria-hidden="true"><span>YOUR PHOTOS</span><i>?</i><span>YOUR PEOPLE</span><i>?</i><span>THE SAME ENERGY</span><i>?</i><span>MAKE IT MAMI</span><i>?</i></div>
 
+    <section className="example-section" id="example-video" aria-labelledby="example-title">
+      <div className="example-copy"><p className="eyebrow">WATCH / THE RESULT</p><h2 id="example-title">See a different<br /><em>version.</em></h2><p>A sample made with this dance reference. Watch the routine above, then see how different faces and outfits can change the result.</p><p className="input-hint">Example only. Your result can vary.</p></div>
+      <div className="example-screen"><div className="stage-top"><span>EXAMPLE VIDEO</span><span className="stage-dot" /></div>{config.media.example ? <VideoPlayer url={config.media.example.url} label="Example generated dance video" /> : <div className="media-empty"><span className="media-play" aria-hidden="true">?</span><strong>Example video coming soon</strong><p>A sample result will appear here.</p></div>}</div>
+    </section>
+
     <section className="creator-section" id="create">
       <div className="section-heading"><div><p className="eyebrow">01 / THE CREATOR</p><h2>Let's see <em>your</em> version.</h2></div><p>Photos for the look.<br />Video for the moves.</p></div>
-      {config.mock && <div className="demo-banner" role="status"><strong>{config.previewOnly ? 'DESIGN PREVIEW' : 'LOCAL DEMO'}</strong><span>{config.previewOnly ? 'Interface preview. Uploads, sign-in and generation require the Cloudflare runtime.' : 'No AI calls or purchases. A completed test returns your reference clip unchanged.'}</span></div>}
+      {config.mock && <div className="demo-banner" role="status"><strong>{config.previewOnly ? 'DESIGN PREVIEW' : 'LOCAL DEMO'}</strong><span>{config.previewOnly ? 'Interface preview. Uploads, sign-in and generation require the Cloudflare runtime.' : 'No AI calls or purchases. A completed test returns the featured dance reference unchanged.'}</span></div>}
       <form className="creator-console" onSubmit={onSubmit}>
         <div className="portrait-panel">
           <div className="panel-title"><h3>Who's dancing?</h3><div className="segmented" role="group" aria-label="Number of dancers"><button type="button" aria-pressed={draft.mode === 'solo'} onClick={() => setDraft(d => ({ ...d, mode: 'solo' }))}>Just me</button><button type="button" aria-pressed={draft.mode === 'duo'} onClick={() => setDraft(d => ({ ...d, mode: 'duo' }))}>Me + a friend</button></div></div>
@@ -159,19 +163,19 @@ function DancePage() {
           {draft.mode === 'solo' && <p className="solo-note">Solo replaces the first dancer on the left. Other people in the clip stay.</p>}
         </div>
         <div className="motion-panel">
-          <div className="panel-title"><h3>Bring the moves.</h3><span className="small-label">02 / REFERENCE</span></div>
-          <label className="video-drop" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void upload(e.dataTransfer.files[0], 'motion'); }}>
-            <input type="file" accept="video/mp4" aria-label="Upload dance reference MP4" disabled={!!busy || running} onChange={e => { void upload(e.target.files?.[0], 'motion'); e.target.value = ''; }} />
-            <span className="video-icon" aria-hidden="true">?</span><strong>{busy === 'motion' ? 'Uploading reference��' : draft.motion ? 'Reference ready. Change clip?' : 'Add your dance reference'}</strong>
-            <span>{draft.motion ? `${draft.duration.toFixed(1)} seconds �� MP4` : 'Drop an MP4 or click to browse'}</span>
-          </label>
-          <p className="input-hint">2�C20 seconds �� up to 30 MB. Match the number of people in your photos. Use a clip you own or have permission to edit.</p>
-          <div className="output-spec"><span>OUTPUT</span><strong>720p �� follows your clip's framing</strong></div>
-          <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} required /><span>I have permission to use these photos and this video. Everyone shown is 18 or older.</span></label>
-          <button className="primary generate-button" type="submit" disabled={!!busy || generation.submitting || running || session.isPending}>
+          <div className="panel-title"><h3>The routine is set.</h3><span className="small-label">02 / YOUR VIDEO</span></div>
+          <div className="fixed-reference-note">
+            <span className="small-label">FEATURED DANCE REFERENCE</span>
+            <h3>{config.media.reference ? 'Same moves. Your people.' : 'The reference is coming soon.'}</h3>
+            <p>We provide the choreography, camera and timing. Add your photos and we will use the fixed reference above.</p>
+            {config.media.reference && <a className="text-link" href="#reference-video">Watch the reference <Arrow /></a>}
+          </div>
+          <div className="output-spec"><span>OUTPUT</span><strong>720p �� follows the reference framing</strong></div>
+          <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} required /><span>I have permission to use these photos. Everyone shown is 18 or older.</span></label>
+          <button className="primary generate-button" type="submit" disabled={!!busy || generation.submitting || running || session.isPending || !config.media.reference}>
             {running ? 'Your video is in progress��' : generation.submitting ? 'Starting your video��' : config.mock ? 'Test the video flow' : 'Make my dance video'} <Arrow />
           </button>
-          <p className="button-note">{config.mock ? 'Mock mode �� reference replay �� no AI generation' : `${cost} credits per video �� sign-in required`}</p>
+          <p className="button-note">{config.mock ? 'Mock mode �� reference replay �� no AI generation' : `${cost} credits per video �� paid credits required`}</p>
           <div aria-live="polite">{(uploadError || submitError) && <p className="error">{uploadError || submitError}</p>}
           {generation.error && <p className="error">{generation.error.code === 'insufficient_credits' || generation.error.code === 'payment_required' ? <>Purchase credits to generate a video. <PricingLink source="mami_credits">View credit packs</PricingLink></> : generation.error.code === 'login_required' ? <button type="button" className="text-button" onClick={() => openSignIn(() => void submit())}>Sign in to continue</button> : generation.error.message}</p>}</div>
         </div>
@@ -181,11 +185,11 @@ function DancePage() {
 
     <section className="how-section" id="how-it-works"><p className="eyebrow">02 / THE ROUTINE</p><div className="how-layout"><h2>Three steps.<br /><span className="muted">All your energy.</span></h2><div className="steps">{[
       ['Pick your people.', 'One photo for your spot, or two to bring your friend. Clear faces and visible shoulders help the model keep your look.'],
-      ['Set the rhythm.', 'Add a clip of the routine. It gives the model the moves, camera and timing �� so you never have to describe every step.'],
-      ['Make it your moment.', 'Generate, review and download. Check the result before sharing, and label realistic AI-created footage when you post.'],
+      ['Preview the routine.', 'Watch the fixed reference above. Its choreography, camera and timing guide every generation, so there is no video to upload.'],
+      ['Make it your moment.', 'Purchase credits, then generate, review and download. Check the result before sharing, and label realistic AI-created footage when you post.'],
     ].map(([title, body], i) => <article key={title}><span className="step-number">0{i + 1}</span><div><h3>{title}</h3><p>{body}</p></div></article>)}</div></div></section>
 
-    <section className="editorial-section"><span className="editorial-symbol" aria-hidden="true">?</span><div><p className="eyebrow">SAME ROUTINE. A DIFFERENT CAST.</p><h2>Good moves.<br />Better company.</h2><p>The Puerto Rican Mami dance is built for a shared moment. Your version starts with the people you choose and the reference you bring. Keep the setup simple, give both dancers room, and let the routine do the talking.</p><a className="text-link" href="#create">Put yourself in the frame <Arrow /></a></div></section>
+    <section className="editorial-section"><span className="editorial-symbol" aria-hidden="true">?</span><div><p className="eyebrow">SAME ROUTINE. A DIFFERENT CAST.</p><h2>Good moves.<br />Better company.</h2><p>The Puerto Rican Mami dance is built for a shared moment. Your version starts with the people you choose and the featured dance routine. Keep the setup simple, give both dancers room, and let the routine do the talking.</p><a className="text-link" href="#create">Put yourself in the frame <Arrow /></a></div></section>
 
     <section className="pricing-section" id="pricing"><div className="section-heading"><div><p className="eyebrow">03 / CREDITS</p><h2>A pack. A few takes.<br />No subscription.</h2></div><p>{config.billingReady ? '10 credits per video.' : 'Pack preview �� checkout opens at launch.'}<br />Failed jobs return charged credits.</p></div>
       {config.billingReady ? <Plans /> : <div className="plans">{site.products.map((product, i) => <article className={`plan ${i === 1 ? 'featured-plan' : ''}`} key={product.id}>{i === 1 && <span className="plan-label">FOR YOUR NEXT FEW IDEAS</span>}<h3>{product.name}</h3><p className="price">${(product.price.amount / 100).toFixed(2)}</p><p className="muted">{'credits' in product ? product.credits : 0} credits �� one-time pack</p><span className="unavailable-label">Available at launch</span></article>)}</div>}
