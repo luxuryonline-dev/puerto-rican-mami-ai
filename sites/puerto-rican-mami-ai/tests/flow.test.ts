@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import test from 'node:test';
-import { getBalance } from '@shipwords/core/credits/ledger';
+import { getBalance, grantCredits } from '@shipwords/core/credits/ledger';
+import { payments } from '@shipwords/core/db/schema';
 import { createCore } from '@shipwords/core/server';
 import { MockAdapter } from '@shipwords/jobs/mock';
 import { runGeneration } from '@shipwords/jobs/runner';
@@ -83,14 +84,14 @@ test('Shipwords API flow: auth ï¿½ï¿½ uploads ï¿½ï¿½ original job lifecycle ï¿½ï
       delete env.STRIPE_SECRET_KEY;
     }
   });
-  await t.test('email OTP signs in and grants the existing signup bonus', async () => {
+  await t.test('email OTP signs in without granting free generation credits', async () => {
     await json(await core.handleAuth(request('/api/auth/email-otp/send-verification-otp', { email: 'mami-flow@example.org', type: 'sign-in' })), 200);
     assert.equal(emails.length, 1);
     const otp = emails[0].text.match(/\b\d{6}\b/)[0];
     const result = await json(await core.handleAuth(request('/api/auth/sign-in/email-otp', { email: 'mami-flow@example.org', otp })), 200);
     userId = result.user.id;
     assert.equal((await core.getUser(request('/api/auth/get-session')))?.id, userId);
-    assert.equal((await getBalance(core.db, userId)).available, 20);
+    assert.equal((await getBalance(core.db, userId)).available, 0);
   });
   await t.test('real photo handler and site reference handler accept media and record ownership', async () => {
     const portrait = fs.readFileSync('public/mock-output.png');
@@ -100,6 +101,26 @@ test('Shipwords API flow: auth ï¿½ï¿½ uploads ï¿½ï¿½ original job lifecycle ï¿½ï
     motion = uploaded.path;
     assert.equal(uploaded.duration, 15);
     assert.equal((await bucket.head(motion.slice(7)))?.customMetadata.userId, userId);
+  });
+  await t.test('legacy free credits, pending payments, refunds and another user payment cannot bypass purchase', async () => {
+    await grantCredits(core.db, { userId, amount: 20, source: 'signup', idemKey: 'legacy-signup-test' });
+    const blocked = async () => {
+      const result = await json(await createDance(request('/api/jobs', { modelId: models[0].id, motion, slots: { left } })), 402);
+      assert.equal(result.error.code, 'payment_required');
+      assert.equal((await getBalance(core.db, userId)).available, 20);
+      assert.equal(dispatched.length, 0);
+      assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS count FROM jobs').get()?.count, 0);
+    };
+    await blocked();
+    const fixture = { userId, provider: 'stripe', productId: 'starter', currency: 'usd', amount: 999 };
+    await core.db.insert(payments).values([
+      { ...fixture, id: 'pay_pending', paymentRef: 'pending' },
+      { ...fixture, id: 'pay_refunded', paymentRef: 'refunded', amountRefunded: 999, creditsGranted: 30 },
+      { ...fixture, id: 'pay_revoked', paymentRef: 'revoked', creditsGranted: 30, creditsRevoked: 30 },
+      { ...fixture, id: 'pay_other', paymentRef: 'other', userId: 'another-user', creditsGranted: 30 },
+    ]);
+    await blocked();
+    await core.db.insert(payments).values({ ...fixture, id: 'pay_settled', paymentRef: 'settled', creditsGranted: 30 });
   });
   await t.test('invalid origins, overlong clips, missing reference and another browser are rejected before charging', async () => {
     assert.equal((await uploadMotion(request('/api/motion-reference', reference, { origin: 'https://unrelated.invalid', 'content-type': 'video/mp4' }))).status, 403);
@@ -138,6 +159,10 @@ test('Shipwords API flow: auth ï¿½ï¿½ uploads ï¿½ï¿½ original job lifecycle ï¿½ï
   await t.test('cancel returns credits once and terminates the existing workflow', async () => {
     const job = await create({ left });
     assert.equal((await getBalance(core.db, userId)).available, 0);
+    const dispatchCount = dispatched.length;
+    const insufficient = await json(await createDance(request('/api/jobs', { modelId: models[0].id, motion, slots: { left } })), 402);
+    assert.equal(insufficient.error.code, 'insufficient_credits');
+    assert.equal(dispatched.length, dispatchCount);
     const result = await json(await jobsApi.cancel(request('/api/jobs/' + job.id + '/cancel', {}), job.id), 200);
     assert.equal(result.job.status, 'canceled'); assert(terminated.includes(job.id));
     assert.equal((await getBalance(core.db, userId)).available, 10);

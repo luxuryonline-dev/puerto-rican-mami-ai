@@ -64,6 +64,19 @@ export async function createDance(request: Request) {
   const owner = object?.customMetadata;
   if (!object || !owner || !((user && owner.userId === user.id) || (guestId && owner.guestId === guestId)))
     return errorResponse(403, 'reference_unavailable', 'Upload your reference again in this browser.');
+  if (!user) return errorResponse(401, 'login_required', 'Sign in before generating a video.');
+  // Existing promotional credits must not let an unpaid account submit a paid generation.
+  // These records are created by the shared, verified payment reconciliation flow.
+  const payment = await core.db.query.payments.findFirst({
+    columns: { id: true },
+    where: (row, { and, eq, gt }) => and(
+      eq(row.userId, user.id),
+      gt(row.amount, row.amountRefunded),
+      gt(row.creditsGranted, row.creditsRevoked),
+    ),
+  });
+  if (!payment)
+    return errorResponse(402, 'payment_required', 'Purchase a credit pack before generating a video.');
   const seconds = Number(owner.duration);
   if (!(seconds >= 2 && seconds <= 20.05)) return errorResponse(400, 'invalid_duration');
   const model = models[0];

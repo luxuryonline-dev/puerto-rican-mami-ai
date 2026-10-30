@@ -16,12 +16,12 @@ const FAQ = [
   ['Which photos work best?', 'Use one adult in each photo, a sharp visible face and a waist-up or full-body crop. Keep arms and shoulders visible, use even light and avoid sunglasses, face filters and heavy occlusion.'],
   ['Will the dance and sound match perfectly?', 'The reference guides the output, but AI may change identity, movement, timing or sound. Exact matching is not guaranteed. You can add a sound you are licensed to use in your video editor or the platform where you post.'],
   ['What does the local demo produce?', 'Local mock mode returns the reference clip unchanged to test uploads, job status and delivery. It does not animate or replace anyone. The page labels this mode and its results clearly.'],
-  ['How are credits used?', 'The configured price is 10 credits per job. Failed or canceled jobs return charged credits. Paid checkout remains unavailable until this site is configured for launch. Current pack prices are a preview.'],
+  ['How are credits used?', 'A paid credit pack is required before generating a video. Registration does not include free generation credits. Each job costs 10 credits, and failed or canceled jobs return charged credits. Checkout remains unavailable until payment setup is complete.'],
 ] as const;
 
 export const Route = createFileRoute('/')({
   head: () => pageHead(site, {
-    title: 'Puerto Rican Mami AI — Make Your Dance Video',
+    title: 'Puerto Rican Mami AI �� Make Your Dance Video',
     description: 'Create a Puerto Rican Mami AI dance video from one or two photos and your reference clip. Pick your dancers, follow the moves, and download your result.', path: '/',
     jsonLd: [
       { '@type': 'WebApplication', name: site.name, applicationCategory: 'MultimediaApplication', operatingSystem: 'Web', url: site.url },
@@ -36,7 +36,7 @@ type Draft = { mode: 'solo' | 'duo'; left: string; right: string; motion: string
 const EMPTY: Draft = { mode: 'duo', left: '', right: '', motion: '', duration: 0 };
 const active = (job: PublicJob) => job.status === 'queued' || job.status === 'submitted';
 
-function Arrow({ down = false }: { down?: boolean }) { return <span aria-hidden="true">{down ? '↓' : '↗'}</span>; }
+function Arrow({ down = false }: { down?: boolean }) { return <span aria-hidden="true">{down ? '��' : '�J'}</span>; }
 function UploadIcon() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 14v6h16v-6" /></svg>; }
 
 function DanceArtwork() {
@@ -82,7 +82,7 @@ function DancePage() {
     if (!file || uploadLock.current) return;
     setUploadError('');
     if (slot === 'motion' ? (file.type !== 'video/mp4' || file.size > 30 * 1024 * 1024) : (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024)) {
-      setUploadError(slot === 'motion' ? 'Choose an MP4 up to 30 MB, 2–20 seconds long.' : 'Choose a JPG, PNG or WebP photo up to 10 MB.'); return;
+      setUploadError(slot === 'motion' ? 'Choose an MP4 up to 30 MB, 2�C20 seconds long.' : 'Choose a JPG, PNG or WebP photo up to 10 MB.'); return;
     }
     uploadLock.current = true; setBusy(slot);
     try {
@@ -122,21 +122,21 @@ function DancePage() {
   return <>
     <section className="hero">
       <div className="hero-copy">
-        <div className="eyebrow"><span className="live-dot" /> PHOTO → DANCE VIDEO</div>
-        <h1>Puerto Rican<br />Mami <span className="outline-type">AI.</span><span className="headline-star" aria-hidden="true">✳</span></h1>
+        <div className="eyebrow"><span className="live-dot" /> PHOTO �� DANCE VIDEO</div>
+        <h1>Puerto Rican<br />Mami <span className="outline-type">AI.</span><span className="headline-star" aria-hidden="true">?</span></h1>
         <p className="hero-tagline">Your face.<br /><span>Those moves.</span></p>
         <p className="hero-description">Put yourself in the dance. Add your photo, bring a friend, and let your reference clip lead the way.</p>
         <a className="button primary hero-cta" href="#create">Make it yours <Arrow /></a>
-        <div className="hero-facts"><span>01–02 PHOTOS</span><span>YOUR REFERENCE</span><span>NO PROMPT NEEDED</span></div>
+        <div className="hero-facts"><span>01�C02 PHOTOS</span><span>YOUR REFERENCE</span><span>NO PROMPT NEEDED</span></div>
       </div>
       <div className="reference-stage">
         <div className="stage-top"><span>THE MOVES START HERE</span><span className="stage-dot" /></div>
         {draft.motion ? <video src={draft.motion} controls playsInline aria-label="Your dance reference video" /> : <DanceArtwork />}
-        <div className="stage-bottom"><span>{draft.motion ? `${draft.duration.toFixed(1)} SEC · YOUR REFERENCE` : 'DANCE ILLUSTRATION · ADD YOUR CLIP BELOW'}</span><span>↙ ↗</span></div>
+        <div className="stage-bottom"><span>{draft.motion ? `${draft.duration.toFixed(1)} SEC �� YOUR REFERENCE` : 'DANCE ILLUSTRATION �� ADD YOUR CLIP BELOW'}</span><span>�L �J</span></div>
         <span className="stage-sticker">better<br />with a friend.</span>
       </div>
     </section>
-    <div className="marquee-strip" aria-hidden="true"><span>YOUR PHOTOS</span><i>✳</i><span>YOUR PEOPLE</span><i>✳</i><span>THE SAME ENERGY</span><i>✳</i><span>MAKE IT MAMI</span><i>✳</i></div>
+    <div className="marquee-strip" aria-hidden="true"><span>YOUR PHOTOS</span><i>?</i><span>YOUR PEOPLE</span><i>?</i><span>THE SAME ENERGY</span><i>?</i><span>MAKE IT MAMI</span><i>?</i></div>
 
     <section className="creator-section" id="create">
       <div className="section-heading"><div><p className="eyebrow">01 / THE CREATOR</p><h2>Let's see <em>your</em> version.</h2></div><p>Photos for the look.<br />Video for the moves.</p></div>
@@ -148,32 +148,32 @@ function DancePage() {
             {(['left', ...(draft.mode === 'duo' ? ['right'] : [])] as ('left' | 'right')[]).map((slot, i) => <div className="photo-slot" key={slot}>
               <label className={`drop-zone ${draft[slot] ? 'has-photo' : ''}`} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void upload(e.dataTransfer.files[0], slot); }}>
                 <input type="file" accept="image/jpeg,image/png,image/webp" aria-label={`Upload ${slot} dancer photo`} disabled={!!busy || running} onChange={e => { void upload(e.target.files?.[0], slot); e.target.value = ''; }} />
-                {draft[slot] ? <img src={draft[slot]} alt={`${slot} dancer portrait`} /> : <><span className="upload-circle"><UploadIcon /></span><strong>{busy === slot ? 'Uploading…' : 'Add photo'}</strong><span>or drop it here</span></>}
+                {draft[slot] ? <img src={draft[slot]} alt={`${slot} dancer portrait`} /> : <><span className="upload-circle"><UploadIcon /></span><strong>{busy === slot ? 'Uploading��' : 'Add photo'}</strong><span>or drop it here</span></>}
                 <span className="slot-number">0{i + 1}</span>
                 {draft[slot] && <span className="change-photo">Click to replace</span>}
               </label>
               <div className="slot-caption"><span>{slot === 'left' ? 'LEFT AT THE START' : 'RIGHT AT THE START'}</span>{draft[slot] && <button type="button" className="text-button" disabled={!!busy || running} onClick={() => setDraft(d => ({ ...d, [slot]: '' }))}>Remove</button>}</div>
             </div>)}
           </div>
-          <p className="input-hint">One adult per photo. A clear face, visible shoulders, and even light work best. JPG, PNG or WebP · up to 10 MB.</p>
+          <p className="input-hint">One adult per photo. A clear face, visible shoulders, and even light work best. JPG, PNG or WebP �� up to 10 MB.</p>
           {draft.mode === 'solo' && <p className="solo-note">Solo replaces the first dancer on the left. Other people in the clip stay.</p>}
         </div>
         <div className="motion-panel">
           <div className="panel-title"><h3>Bring the moves.</h3><span className="small-label">02 / REFERENCE</span></div>
           <label className="video-drop" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void upload(e.dataTransfer.files[0], 'motion'); }}>
             <input type="file" accept="video/mp4" aria-label="Upload dance reference MP4" disabled={!!busy || running} onChange={e => { void upload(e.target.files?.[0], 'motion'); e.target.value = ''; }} />
-            <span className="video-icon" aria-hidden="true">▷</span><strong>{busy === 'motion' ? 'Uploading reference…' : draft.motion ? 'Reference ready. Change clip?' : 'Add your dance reference'}</strong>
-            <span>{draft.motion ? `${draft.duration.toFixed(1)} seconds · MP4` : 'Drop an MP4 or click to browse'}</span>
+            <span className="video-icon" aria-hidden="true">?</span><strong>{busy === 'motion' ? 'Uploading reference��' : draft.motion ? 'Reference ready. Change clip?' : 'Add your dance reference'}</strong>
+            <span>{draft.motion ? `${draft.duration.toFixed(1)} seconds �� MP4` : 'Drop an MP4 or click to browse'}</span>
           </label>
-          <p className="input-hint">2–20 seconds · up to 30 MB. Match the number of people in your photos. Use a clip you own or have permission to edit.</p>
-          <div className="output-spec"><span>OUTPUT</span><strong>720p · follows your clip's framing</strong></div>
+          <p className="input-hint">2�C20 seconds �� up to 30 MB. Match the number of people in your photos. Use a clip you own or have permission to edit.</p>
+          <div className="output-spec"><span>OUTPUT</span><strong>720p �� follows your clip's framing</strong></div>
           <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} required /><span>I have permission to use these photos and this video. Everyone shown is 18 or older.</span></label>
           <button className="primary generate-button" type="submit" disabled={!!busy || generation.submitting || running || session.isPending}>
-            {running ? 'Your video is in progress…' : generation.submitting ? 'Starting your video…' : config.mock ? 'Test the video flow' : 'Make my dance video'} <Arrow />
+            {running ? 'Your video is in progress��' : generation.submitting ? 'Starting your video��' : config.mock ? 'Test the video flow' : 'Make my dance video'} <Arrow />
           </button>
-          <p className="button-note">{config.mock ? 'Mock mode · reference replay · no AI generation' : `${cost} credits per video · sign-in required`}</p>
+          <p className="button-note">{config.mock ? 'Mock mode �� reference replay �� no AI generation' : `${cost} credits per video �� sign-in required`}</p>
           <div aria-live="polite">{(uploadError || submitError) && <p className="error">{uploadError || submitError}</p>}
-          {generation.error && <p className="error">{generation.error.code === 'insufficient_credits' ? <>You need more credits. <PricingLink source="mami_credits">View credit packs</PricingLink></> : generation.error.code === 'login_required' ? <button type="button" className="text-button" onClick={() => openSignIn(() => void submit())}>Sign in to continue</button> : generation.error.message}</p>}</div>
+          {generation.error && <p className="error">{generation.error.code === 'insufficient_credits' || generation.error.code === 'payment_required' ? <>Purchase credits to generate a video. <PricingLink source="mami_credits">View credit packs</PricingLink></> : generation.error.code === 'login_required' ? <button type="button" className="text-button" onClick={() => openSignIn(() => void submit())}>Sign in to continue</button> : generation.error.message}</p>}</div>
         </div>
       </form>
       <div className="results" id="results" aria-live="polite">{generation.jobs.map(job => <ResultCard key={job.id} job={job} mock={config.mock} cancel={() => void generation.cancel(job.id).catch(e => setSubmitError(String(e)))} />)}</div>
@@ -181,14 +181,14 @@ function DancePage() {
 
     <section className="how-section" id="how-it-works"><p className="eyebrow">02 / THE ROUTINE</p><div className="how-layout"><h2>Three steps.<br /><span className="muted">All your energy.</span></h2><div className="steps">{[
       ['Pick your people.', 'One photo for your spot, or two to bring your friend. Clear faces and visible shoulders help the model keep your look.'],
-      ['Set the rhythm.', 'Add a clip of the routine. It gives the model the moves, camera and timing — so you never have to describe every step.'],
+      ['Set the rhythm.', 'Add a clip of the routine. It gives the model the moves, camera and timing �� so you never have to describe every step.'],
       ['Make it your moment.', 'Generate, review and download. Check the result before sharing, and label realistic AI-created footage when you post.'],
     ].map(([title, body], i) => <article key={title}><span className="step-number">0{i + 1}</span><div><h3>{title}</h3><p>{body}</p></div></article>)}</div></div></section>
 
-    <section className="editorial-section"><span className="editorial-symbol" aria-hidden="true">✳</span><div><p className="eyebrow">SAME ROUTINE. A DIFFERENT CAST.</p><h2>Good moves.<br />Better company.</h2><p>The Puerto Rican Mami dance is built for a shared moment. Your version starts with the people you choose and the reference you bring. Keep the setup simple, give both dancers room, and let the routine do the talking.</p><a className="text-link" href="#create">Put yourself in the frame <Arrow /></a></div></section>
+    <section className="editorial-section"><span className="editorial-symbol" aria-hidden="true">?</span><div><p className="eyebrow">SAME ROUTINE. A DIFFERENT CAST.</p><h2>Good moves.<br />Better company.</h2><p>The Puerto Rican Mami dance is built for a shared moment. Your version starts with the people you choose and the reference you bring. Keep the setup simple, give both dancers room, and let the routine do the talking.</p><a className="text-link" href="#create">Put yourself in the frame <Arrow /></a></div></section>
 
-    <section className="pricing-section" id="pricing"><div className="section-heading"><div><p className="eyebrow">03 / CREDITS</p><h2>A pack. A few takes.<br />No subscription.</h2></div><p>{config.billingReady ? '10 credits per video.' : 'Pack preview · checkout opens at launch.'}<br />Failed jobs return charged credits.</p></div>
-      {config.billingReady ? <Plans /> : <div className="plans">{site.products.map((product, i) => <article className={`plan ${i === 1 ? 'featured-plan' : ''}`} key={product.id}>{i === 1 && <span className="plan-label">FOR YOUR NEXT FEW IDEAS</span>}<h3>{product.name}</h3><p className="price">${(product.price.amount / 100).toFixed(2)}</p><p className="muted">{'credits' in product ? product.credits : 0} credits · one-time pack</p><span className="unavailable-label">Available at launch</span></article>)}</div>}
+    <section className="pricing-section" id="pricing"><div className="section-heading"><div><p className="eyebrow">03 / CREDITS</p><h2>A pack. A few takes.<br />No subscription.</h2></div><p>{config.billingReady ? '10 credits per video.' : 'Pack preview �� checkout opens at launch.'}<br />Failed jobs return charged credits.</p></div>
+      {config.billingReady ? <Plans /> : <div className="plans">{site.products.map((product, i) => <article className={`plan ${i === 1 ? 'featured-plan' : ''}`} key={product.id}>{i === 1 && <span className="plan-label">FOR YOUR NEXT FEW IDEAS</span>}<h3>{product.name}</h3><p className="price">${(product.price.amount / 100).toFixed(2)}</p><p className="muted">{'credits' in product ? product.credits : 0} credits �� one-time pack</p><span className="unavailable-label">Available at launch</span></article>)}</div>}
     </section>
 
     <section className="faq-section" id="faq"><div><p className="eyebrow">04 / GOOD TO KNOW</p><h2>Before you<br />hit the beat.</h2><p className="muted">A few things about the dance,<br />your photos, and your video.</p></div><div className="faq-list">{FAQ.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>
@@ -199,10 +199,10 @@ function DancePage() {
 function ResultCard({ job, mock, cancel }: { job: PublicJob; mock: boolean; cancel: () => void }) {
   return <article className="job"><div className="result-heading"><strong>{mock ? 'Demo reference replay' : 'Your dance video'}</strong><span className="small-label">{job.status}</span></div>
     {job.outputs.map(output => output.mediaType.startsWith('video/') ? <video key={output.url} src={output.url} controls playsInline aria-label={mock ? 'Mock result: original reference unchanged' : 'Generated dance video'} /> : <img key={output.url} src={output.url} alt="Job output" />)}
-    {active(job) && <div className="job-pending"><span className="loader" /><p>{mock ? 'Testing the job and delivery flow…' : 'Your dance video is being made…'}</p><button type="button" onClick={cancel}>Cancel job</button></div>}
+    {active(job) && <div className="job-pending"><span className="loader" /><p>{mock ? 'Testing the job and delivery flow��' : 'Your dance video is being made��'}</p><button type="button" onClick={cancel}>Cancel job</button></div>}
     {job.status === 'failed' && <p className="error">Generation failed. Charged credits are returned. {job.error?.message}</p>}
     {job.status === 'canceled' && <p className="muted">Canceled. Charged credits are returned.</p>}
-    {job.outputs.map(output => <a className="button primary" key={output.url} href={output.url} download>{mock ? 'Download reference replay' : 'Download video'} ↓</a>)}
+    {job.outputs.map(output => <a className="button primary" key={output.url} href={output.url} download>{mock ? 'Download reference replay' : 'Download video'} ��</a>)}
     {mock && job.status === 'succeeded' && <p className="input-hint">This is your input reference, unchanged. Mock mode performs no AI animation.</p>}
   </article>;
 }
