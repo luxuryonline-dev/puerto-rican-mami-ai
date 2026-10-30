@@ -74,8 +74,18 @@ export function createCore(site: SiteConfig, options: { log?: Logger } = {}) {
       const session = await auth.api.getSession({ headers: request.headers });
       return session ? { id: session.user.id, email: session.user.email, name: session.user.name } : null;
     };
-    const provider = createProvider(site, env);
-    cached = { env, db, baseURL, auth, billing: { db, site, provider, baseURL, getUser, log } };
+    // Public pages, auth and generation must work before payments are configured.
+    // Validate payment credentials only when a billing operation needs its provider.
+    let provider: PaymentProvider | undefined;
+    cached = {
+      env, db, baseURL, auth,
+      billing: {
+        db, site, baseURL, getUser, log,
+        get provider() {
+          return (provider ??= createProvider(site, env));
+        },
+      },
+    };
     return cached;
   }
 

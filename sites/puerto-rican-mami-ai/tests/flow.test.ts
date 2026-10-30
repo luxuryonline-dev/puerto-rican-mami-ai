@@ -4,12 +4,14 @@ import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import test from 'node:test';
 import { getBalance } from '@shipwords/core/credits/ledger';
+import { createCore } from '@shipwords/core/server';
 import { MockAdapter } from '@shipwords/jobs/mock';
 import { runGeneration } from '@shipwords/jobs/runner';
 import { buildYirRequest } from '@shipwords/jobs/yir';
 import { core, jobsApi } from '../src/core.server';
 import { createDance, uploadMotion } from '../src/site/motion.server';
 import models from '../site.models';
+import site from '../site.config';
 import { env, LocalD1, LocalR2 } from './support/local-worker';
 
 const base = 'http://localhost:6365';
@@ -21,7 +23,6 @@ const terminated: string[] = [];
 Object.assign(env, {
   DB: db, OUTPUTS: bucket, APP_URL: base,
   BETTER_AUTH_SECRET: randomBytes(32).toString('hex'), GUEST_COOKIE_SECRET: randomBytes(32).toString('hex'),
-  STRIPE_SECRET_KEY: 'sk_test_local_integration', STRIPE_WEBHOOK_SECRET: 'whsec_local_integration',
   EMAIL_FROM: 'noreply@example.org', EMAIL: { send: async (message: any) => { emails.push(message); } },
   UPSTREAM_MOCK: '1', YIR_API_KEY: '',
   GENERATION_WORKFLOW: { create: async ({ id }: any) => { dispatched.push(id); return { id }; },
@@ -59,9 +60,29 @@ const fetchOutput = async (input: string | URL | Request) => {
   return jobsApi.file(new Request(url), url.pathname.slice('/files/'.length));
 };
 
-test('Shipwords API flow: auth → uploads → original job lifecycle → result / refund', async t => {
+test('Shipwords API flow: auth �� uploads �� original job lifecycle �� result / refund', async t => {
   let userId: string; let left: string; let right: string; let motion: string;
   const reference = mp4();
+  await t.test('public config and auth work without payment credentials; billing still requires them', async () => {
+    assert.equal(env.STRIPE_SECRET_KEY, undefined);
+    assert.equal(env.STRIPE_WEBHOOK_SECRET, undefined);
+    const unpaid = createCore(site);
+    assert.equal(unpaid.env.APP_URL, base);
+    await json(await unpaid.handleAuth(request('/api/auth/get-session', undefined, {}, false)), 200);
+    await assert.rejects(
+      unpaid.billing.webhook(request('/api/webhooks/stripe', {})),
+      /missing env STRIPE_SECRET_KEY/,
+    );
+    env.STRIPE_SECRET_KEY = 'sk_test_local_integration';
+    try {
+      await assert.rejects(
+        unpaid.billing.webhook(request('/api/webhooks/stripe', {})),
+        /missing env STRIPE_WEBHOOK_SECRET/,
+      );
+    } finally {
+      delete env.STRIPE_SECRET_KEY;
+    }
+  });
   await t.test('email OTP signs in and grants the existing signup bonus', async () => {
     await json(await core.handleAuth(request('/api/auth/email-otp/send-verification-otp', { email: 'mami-flow@example.org', type: 'sign-in' })), 200);
     assert.equal(emails.length, 1);
