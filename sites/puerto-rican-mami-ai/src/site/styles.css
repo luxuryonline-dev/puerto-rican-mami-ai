@@ -50,3 +50,26 @@
 /* Site-managed reference and independent sample player. */
 .fixed-reference-note{padding:22px;border:1px solid var(--color-line);border-radius:7px;background:#151e17;margin-bottom:20px}.fixed-reference-note h3{font-size:22px;margin:14px 0}.fixed-reference-note p{font-size:13px;color:var(--color-muted);line-height:1.8}.fixed-reference-note .text-link{display:inline-block;margin-top:18px;font-size:12px}.example-section{display:grid;grid-template-columns:1fr 1.25fr;gap:65px;align-items:center;padding:60px 0;border-bottom:1px solid var(--color-line)}.example-copy h2{margin:20px 0}.example-copy>p:not(.eyebrow){max-width:360px;font-size:14px;color:var(--color-muted);line-height:1.85}.example-copy .input-hint{margin-top:16px}.example-screen{border:1px solid var(--color-line);border-radius:9px;overflow:hidden;background:#111912}.example-screen video{display:block;width:100%;max-height:480px;min-height:250px;aspect-ratio:16/9;object-fit:contain;background:#0b100d}.media-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:270px;padding:30px;text-align:center;background:radial-gradient(ellipse at center,#273321,#111912)}.media-empty strong{font-size:17px}.media-empty p{font-size:12px;color:var(--color-muted)}.media-play{display:grid;place-items:center;width:58px;height:58px;border:1px solid #607340;border-radius:50%;font-size:20px;color:var(--color-accent);margin-bottom:8px}.reference-stage .media-empty{height:390px}.reference-stage video{display:block}.reference-stage[id]{scroll-margin-top:30px}
 @media(max-width:760px){.example-section{grid-template-columns:1fr;gap:24px;padding:40px 0}.example-copy h2{font-size:36px}.example-copy>p:not(.eyebrow){font-size:13px;max-width:none}.example-screen video{min-height:210px}.media-empty{min-height:230px}.fixed-reference-note{padding:18px}.reference-stage .media-empty{height:300px}}
+
+/* Transparent pack savings, shared by the homepage and pricing dialog. */
+.plans{align-items:stretch}
+.plan.value-plan{display:flex;flex-direction:column;min-width:0;padding:26px 24px}
+.value-plan .plan-offer{min-height:30px;margin-bottom:17px}
+.value-plan .plan-badge{display:inline-block;max-width:100%;padding:5px 9px;border:1px solid var(--color-line);border-radius:4px;color:var(--color-muted);font:10px/1.5 ui-monospace,monospace;letter-spacing:.3px;text-transform:uppercase}
+.value-plan .plan-badge.has-savings{color:var(--color-accent);border-color:#596b39;background:#28331d}
+.value-plan.best-value-plan{border:2px solid var(--color-accent);padding:25px 23px;background:linear-gradient(145deg,#2b371f,#1c2618)}
+.best-value-plan .plan-badge.has-savings{color:#172013;background:var(--color-accent);border-color:var(--color-accent);font-weight:700}
+.value-plan h3,.value-plan h2{font-size:18px;line-height:1.4;letter-spacing:-.4px;margin:0 0 14px}
+.value-plan .price{font-size:44px;line-height:1.1;margin:0}
+.value-plan .plan-unit-price{font-size:17px;color:var(--color-accent);font-weight:700;margin:12px 0 0;line-height:1.5}
+.value-plan .plan-unit-price span{color:var(--color-muted);font-size:12px;font-weight:400}
+.plan-value-details{margin:20px 0 18px;padding-top:16px;border-top:1px solid var(--color-line)}
+.value-plan .plan-savings{font-size:14px;line-height:1.6;margin:0}
+.value-plan .plan-savings strong{font-size:19px;color:var(--color-accent)}
+.value-plan .plan-comparison{font-size:11px;color:var(--color-muted);line-height:1.7;margin:5px 0 0}
+.value-plan .plan-credits{font-size:11px;color:var(--color-muted);line-height:1.7;margin:0 0 19px}
+.value-plan button{width:100%;margin-top:auto;min-height:44px;font-size:14px}
+.pricing-savings-note{font-size:11px;color:var(--color-muted);line-height:1.8;margin:18px 0 12px;max-width:820px}
+.pricing-dialog>.muted,.pricing-section>.muted{font-size:11px;line-height:1.8}
+@media(min-width:481px) and (max-width:800px){.plan.value-plan{padding:20px 14px}.value-plan.best-value-plan{padding:19px 13px}.value-plan .plan-badge{font-size:8px;padding:5px 6px}.value-plan h3,.value-plan h2{font-size:14px}.value-plan .price{font-size:34px}.value-plan .plan-unit-price{font-size:15px}}
+@media(max-width:480px){.plan.value-plan{padding:24px}.value-plan.best-value-plan{padding:23px}.value-plan .plan-offer{min-height:0;margin-bottom:16px}}

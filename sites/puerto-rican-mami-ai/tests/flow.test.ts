@@ -18,6 +18,7 @@ import { fixedReference, serveSiteMedia, siteMedia } from '../src/site/media.ser
 import { isSiteMedia, SITE_MEDIA } from '../src/site/media';
 import { SceneControls } from '../src/site/scene-controls';
 import { SCENE_DESCRIPTION_LIMIT, type SceneMode } from '../src/site/scene';
+import { packValue } from '../src/site/pack-value';
 import models from '../site.models';
 import site from '../site.config';
 import { env, LocalD1, LocalR2 } from './support/local-worker';
@@ -75,6 +76,10 @@ test('Shipwords API flow: auth ï¿½ï¿½ uploads ï¿½ï¿½ original job lifecycle ï¿½ï
   await t.test('current packs keep prices and provide 1, 3 and 8 videos; old entitlements remain server-side', async () => {
     assert.deepEqual(site.products.map(product => product.price.amount), [999, 2499, 4999]);
     assert.deepEqual(site.products.map(product => product.kind === 'credits' ? product.credits / models[0].credits : null), [1, 3, 8]);
+    assert.deepEqual(site.products.map(product => packValue(product)?.comparisonCents), [999, 2997, 7992]);
+    assert.deepEqual(site.products.map(product => packValue(product)?.savingsCents), [0, 498, 2993]);
+    assert.deepEqual(site.products.map(product => packValue(product)?.savingsPercent), ['0.0', '16.6', '37.4']);
+    assert.deepEqual(site.products.map(product => Math.round(packValue(product)!.perVideoCents)), [999, 833, 625]);
     assert.equal(site.products.some(product => product.id === 'starter'), false);
     const legacy = core.site.products.find(product => product.id === 'starter');
     assert(legacy?.kind === 'credits');

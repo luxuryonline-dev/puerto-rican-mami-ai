@@ -6,6 +6,7 @@ import { authClient } from '~/lib/auth';
 import { track } from '~/lib/track';
 import { m } from '~/paraglide/messages.js';
 import { openSignIn } from '~/site/sign-in';
+import { packValue } from './pack-value';
 import site from '../../site.config';
 
 // No separate pricing page: buy from the home #pricing section; other entry points (nav, low credits, account) open a dialog in place.
@@ -21,11 +22,15 @@ export function openPricing(source: string) {
 }
 
 export function formatPrice(product: Product) {
-  const amount = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: product.price.currency,
-  }).format(product.price.amount / 100);
+  const amount = money(product.price.amount, product.price.currency);
   return product.kind === 'subscription' ? `${amount}/${product.interval}` : amount;
+}
+
+function money(cents: number, currency: string) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency,
+  }).format(cents / 100);
 }
 
 function describe(product: Product) {
@@ -79,6 +84,8 @@ export function Plans({
   const config = root.useLoaderData();
   const session = authClient(config.googleClientId).useSession();
   const { checkout, pending, error } = useCheckout();
+  const starter = site.products[0];
+  const bestUnitPrice = Math.min(...site.products.map(product => packValue(product)?.perVideoCents ?? Infinity));
 
   function buy(productId: string) {
     if (!config.billingReady) return;
@@ -98,11 +105,23 @@ export function Plans({
   return (
     <>
       <div className="plans">
-        {site.products.map((product) => (
-          <article key={product.id} className="plan">
+        {site.products.map((product) => {
+          const value = packValue(product);
+          const bestValue = Boolean(value && value.savingsCents > 0 && value.perVideoCents === bestUnitPrice);
+          return <article key={product.id} className={`plan value-plan${bestValue ? ' best-value-plan' : ''}`}>
+            <div className="plan-offer"><span className={`plan-badge${value && value.savingsCents > 0 ? ' has-savings' : ''}`}>
+              {bestValue ? 'Best value �� ' : ''}{value && value.savingsCents > 0 ? `Save ${value.savingsPercent}%` : 'One-time pack'}
+            </span></div>
             <Heading>{product.name}</Heading>
             <p className="price">{formatPrice(product)}</p>
-            <p>{describe(product)}</p>
+            {value && <p className="plan-unit-price">{money(value.perVideoCents, product.price.currency)} <span>per video</span></p>}
+            <div className="plan-value-details">
+              {value && value.savingsCents > 0 ? <>
+                <p className="plan-savings">Save <strong>{money(value.savingsCents, product.price.currency)}</strong></p>
+                <p className="plan-comparison">vs. {money(value.comparisonCents, product.price.currency)} buying Starter packs</p>
+              </> : <><p className="plan-savings">Start with one video.</p><p className="plan-comparison">Try the routine with your own photos.</p></>}
+            </div>
+            <p className="plan-credits">{describe(product)}</p>
             <button
               type="button"
               className="primary"
@@ -113,11 +132,12 @@ export function Plans({
                 ? m.common_plan_redirecting()
                 : product.kind === 'subscription'
                   ? m.common_plan_subscribe()
-                  : m.common_plan_buy()}
+                  : value ? `Get ${value.videos} ${value.videos === 1 ? 'video' : 'videos'}` : m.common_plan_buy()}
             </button>
           </article>
-        ))}
+        })}
       </div>
+      {starter && <p className="pricing-savings-note">Savings compared with buying the same number of videos in Starter packs at {formatPrice(starter)} each. One-time payment, no subscription.</p>}
       {error && <p className="error">{error}</p>}
       <p className="muted">
         {m.common_pay_fine()} {/* Opens in a new tab so the dialog and generator input are kept. */}
@@ -153,7 +173,7 @@ export function PricingDialog() {
       }}
     >
       <button type="button" className="dialog-close" aria-label={m.common_close()} onClick={close}>
-        ×
+        ��
       </button>
       <h2 id="pricing-title">{m.common_pricing_dialog_title()}</h2>
       <Plans source="dialog" />
