@@ -1,5 +1,6 @@
 import { defineModels } from '@shipwords/jobs/models';
 import { SITE_MEDIA } from './src/site/media';
+import { dancePrompt } from './src/site/scene';
 
 // The create route validates the operator's fixed R2 reference before any job or charge.
 export default defineModels([
@@ -14,15 +15,7 @@ export default defineModels([
       ],
       segments: [{
         id: 'dance', referenceVideo: SITE_MEDIA.reference, slots: ['left', 'right'],
-        prompt: (images: Readonly<Record<string, string>>) => [
-          'Edit @video_1.',
-          `Replace the dancer on the left at the start with the adult in ${images.left?.replace(/^@image(\d+)$/, '@image_$1')}.`,
-          images.right
-            ? `Replace the dancer on the right at the start with the adult in ${images.right.replace(/^@image(\d+)$/, '@image_$1')}.`
-            : 'Keep all other people unchanged.',
-          'Use each replacement photo for that dancer\'s face, hair, body appearance and outfit. Track each identity continuously even when the dancers swap sides or overlap.',
-          'Preserve the choreography, gestures, body rhythm, camera position, framing, environment, lighting and duration of the reference video. Keep the reference audio. Do not add extra people, text, watermarks or camera cuts.',
-        ].join(' '),
+        prompt: (images: Readonly<Record<string, string>>) => dancePrompt({ mode: 'original' }, images),
         parameters: { duration: 15, resolution: '720p', aspect_ratio: 'auto' }, maxCost: '4.00',
       }],
     },

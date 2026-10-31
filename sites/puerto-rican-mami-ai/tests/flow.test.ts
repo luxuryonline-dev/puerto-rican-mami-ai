@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import test from 'node:test';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
 import { getBalance, grantCredits } from '@shipwords/core/credits/ledger';
 import { payments } from '@shipwords/core/db/schema';
 import { createCore } from '@shipwords/core/server';
@@ -14,6 +16,8 @@ import { createDance, uploadMotion } from '../src/site/motion.server';
 import { checkout } from '../src/site/checkout.server';
 import { fixedReference, serveSiteMedia, siteMedia } from '../src/site/media.server';
 import { isSiteMedia, SITE_MEDIA } from '../src/site/media';
+import { SceneControls } from '../src/site/scene-controls';
+import { SCENE_DESCRIPTION_LIMIT, type SceneMode } from '../src/site/scene';
 import models from '../site.models';
 import site from '../site.config';
 import { env, LocalD1, LocalR2 } from './support/local-worker';
@@ -237,6 +241,95 @@ test('Shipwords API flow: auth ï¿½ï¿½ uploads ï¿½ï¿½ original job lifecycle ï¿½ï
     assert.equal((await getBalance(core.db, userId)).available, 10);
     await runGeneration(deps, job.id, steps);
     assert.equal((await getBalance(core.db, userId)).available, 10);
+  });
+  await t.test('scene controls show only the selected inputs and keep visitor copy in English', () => {
+    for (const mode of ['original', 'description', 'photo'] as SceneMode[]) {
+      const html = renderToStaticMarkup(createElement(SceneControls, {
+        mode, description: '', background: '', disabled: false, uploading: false,
+        onMode() {}, onDescription() {}, onUpload() {}, onRemove() {},
+      }));
+      assert.equal((html.match(/type="radio"/g) ?? []).length, 3);
+      assert.equal(html.includes('<textarea'), mode !== 'original');
+      assert.equal(html.includes('type="file"'), mode === 'photo');
+      assert.equal(/<textarea[^>]* required=""/.test(html), mode === 'description');
+      assert(!/[\u3400-\u9fff]/.test(html), 'English site controls must not contain Chinese copy.');
+    }
+  });
+  await t.test('invalid scenes and arbitrary background URLs fail without credits or jobs', async () => {
+    const balance = (await getBalance(core.db, userId)).available;
+    const count = dispatched.length;
+    for (const scene of [null, [], { mode: 'unknown' }, { mode: 'description', description: '  ' },
+      { mode: 'description', description: 'x'.repeat(SCENE_DESCRIPTION_LIMIT + 1) },
+      { mode: 'description', description: { prompt: 'wrong type' } },
+      { mode: 'description', description: 'a\u0000room' }]) {
+      const response = await json(await createDance(request('/api/jobs', { modelId: models[0].id, slots: { left }, scene })), 400);
+      assert.equal(response.error.code, 'invalid_scene');
+    }
+    const missing = await json(await createDance(request('/api/jobs', { modelId: models[0].id, slots: { left }, scene: { mode: 'photo' } })), 400);
+    assert.equal(missing.error.code, 'background_required');
+    for (const background of ['https://attacker.invalid/photo.png', '/files/assets/secret.png', '/files/uploads/../secret.png']) {
+      const response = await json(await createDance(request('/api/jobs', { modelId: models[0].id, slots: { left, background }, scene: { mode: 'photo' } })), 400);
+      assert.equal(response.error.code, 'invalid_slots');
+    }
+    assert.equal((await getBalance(core.db, userId)).available, balance);
+    assert.equal(dispatched.length, count);
+  });
+  await t.test('custom scenes snapshot the selected prompt and correctly numbered background references into real jobs', async () => {
+    const background = (await json(await jobsApi.upload(request('/api/uploads', fs.readFileSync('public/mock-output.png'), { 'content-type': 'image/png' })), 201)).path;
+    await grantCredits(core.db, { userId, amount: 30, source: 'purchase', idemKey: 'scene-flow-credit-fixture' });
+    const cases = [
+      { scene: { mode: 'description', description: 'A sunlit rooftop in San Juan.' }, slots: { left, background }, refs: 2, image: null },
+      { scene: { mode: 'photo', description: '' }, slots: { left, background }, refs: 3, image: '@image_2' },
+      { scene: { mode: 'photo', description: 'Warm evening light.' }, slots: { left, right, background }, refs: 4, image: '@image_3' },
+    ];
+    for (const scenario of cases) {
+      const before = (await getBalance(core.db, userId)).available;
+      const response = await json(await createDance(request('/api/jobs', {
+        modelId: models[0].id, ...scenario, motion: 'https://attacker.invalid/override.mp4',
+        prompt: 'OVERRIDE_FIXED_DANCE', parameters: { duration: 1, credits: 0 },
+      })), 201);
+      const row = db.sqlite.prepare('SELECT input_json FROM jobs WHERE id = ?').get(response.job.id) as { input_json: string };
+      const stored = JSON.parse(row.input_json).parts[0];
+      assert.equal(stored.references.length, scenario.refs);
+      assert(!stored.prompt.includes('Keep the original environment'));
+      assert(!stored.prompt.includes('OVERRIDE_FIXED_DANCE'));
+      assert.equal(stored.parameters.duration, 15);
+      assert.equal((await getBalance(core.db, userId)).available, before - 10);
+      assert.equal(response.job.prompt, '', 'Internal prompts stay private.');
+      const submitted: any[] = [];
+      const mock = new MockAdapter('succeed', { image: 0, video: 0 });
+      const adapter = { name: 'scene-mock', submit: async (input: any) => { submitted.push(input); return mock.submit(input); }, poll: (id: string) => mock.poll(id), cancel: () => mock.cancel() };
+      // The worker uses the static catalog; scene changes must already exist in the job snapshot.
+      await runGeneration({ db: core.db, bucket: bucket as any, models, adapters: { yir: adapter }, fetcher: fetchOutput as typeof fetch }, response.job.id, steps);
+      assert.equal(submitted.length, 1);
+      const payload = buildYirRequest(submitted[0]);
+      assert.equal(payload.input.type, 'reference');
+      assert.equal(submitted[0].references[0].role, 'reference_video');
+      assert.equal(submitted[0].references[0].url, base + motion);
+      assert(submitted[0].prompt.includes('Keep the reference audio'));
+      if (scenario.image) {
+        assert(submitted[0].prompt.includes(`setting shown in ${scenario.image}`));
+        assert.equal(submitted[0].references.at(-1).url, base + background);
+        assert.equal(submitted[0].references.at(-1).role, 'reference_image');
+        assert(submitted[0].prompt.includes('do not copy its people'));
+      } else {
+        assert(submitted[0].prompt.includes('A sunlit rooftop in San Juan.'));
+        assert(!submitted[0].references.some((ref: any) => ref.url === base + background), 'Text scenes ignore a stale background upload.');
+      }
+      const result = await json(await jobsApi.get(request('/api/jobs/' + response.job.id), response.job.id), 200);
+      assert.equal(result.job.status, 'succeeded');
+    }
+    const before = (await getBalance(core.db, userId)).available;
+    const original = await json(await createDance(request('/api/jobs', {
+      modelId: models[0].id, slots: { left, background }, scene: { mode: 'original', description: 'Ignore this stale setting.' },
+    })), 201);
+    const row = db.sqlite.prepare('SELECT input_json FROM jobs WHERE id = ?').get(original.job.id) as { input_json: string };
+    const part = JSON.parse(row.input_json).parts[0];
+    assert(part.prompt.includes('Keep the original environment'));
+    assert(!part.prompt.includes('stale setting'));
+    assert.equal(part.references.length, 2);
+    await jobsApi.cancel(request('/api/jobs/' + original.job.id + '/cancel', {}), original.job.id);
+    assert.equal((await getBalance(core.db, userId)).available, before);
   });
   db.sqlite.close();
 });

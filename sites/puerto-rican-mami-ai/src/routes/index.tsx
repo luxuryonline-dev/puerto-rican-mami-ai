@@ -5,6 +5,8 @@ import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { authClient } from '~/lib/auth';
 import { Plans, PricingLink } from '~/site/pricing';
 import { openSignIn } from '~/site/sign-in';
+import { parseScene, SCENE_DESCRIPTION_LIMIT, type SceneChoice, type SceneMode } from '~/site/scene';
+import { SceneControls } from '~/site/scene-controls';
 import site from '../../site.config';
 import models from '../../site.models';
 
@@ -12,7 +14,8 @@ const FAQ = [
   ['What is Puerto Rican Mami AI?', 'It is a way to remake the dance with your own photos. Your portrait supplies the appearance, while a reference video guides the choreography, timing and camera. This site is an independent creation tool.'],
   ['Can I make it with a friend?', 'Yes. Choose Duo and upload one photo per dancer. Photo 1 replaces the dancer on the left at the start; Photo 2 replaces the dancer on the right. The instructions follow those identities when they cross.'],
   ['What does Solo change?', 'Solo replaces only the dancer initially on the left. Any other dancer in the fixed reference stays unchanged.'],
-  ['Which reference video is used?', 'Every generation uses the fixed dance reference displayed on this page. The site provides the routine, timing and camera. You only upload the dancer photos.'],
+  ['Which reference video is used?', 'Every generation uses the fixed dance reference displayed on this page. It guides the routine, timing, camera and sound. Upload your dancer photos, then keep the original setting or choose a custom scene.'],
+  ['Can I choose a different scene?', 'Yes. Keep the original scene, describe a new setting, or upload a background photo with optional scene details. Dancer photos supply identity and outfits; the background photo supplies scenery. The reference continues to guide the dance and audio. AI may vary the setting, motion and sound.'],
   ['Which photos work best?', 'Use one adult in each photo, a sharp visible face and a waist-up or full-body crop. Keep arms and shoulders visible, use even light and avoid sunglasses, face filters and heavy occlusion.'],
   ['Will the dance and sound match perfectly?', 'The reference guides the output, but AI may change identity, movement, timing or sound. Exact matching is not guaranteed. You can add a sound you are licensed to use in your video editor or the platform where you post.'],
   ['What does the local demo produce?', 'Local mock mode returns the reference clip unchanged to test uploads, job status and delivery. It does not animate or replace anyone. The page labels this mode and its results clearly.'],
@@ -31,9 +34,9 @@ export const Route = createFileRoute('/')({
 });
 
 const root = getRouteApi('__root__');
-const STATE_KEY = 'mami:draft:v2';
-type Draft = { mode: 'solo' | 'duo'; left: string; right: string };
-const EMPTY: Draft = { mode: 'duo', left: '', right: '' };
+const STATE_KEY = 'mami:draft:v3';
+type Draft = { mode: 'solo' | 'duo'; left: string; right: string; sceneMode: SceneMode; sceneDescription: string; background: string };
+const EMPTY: Draft = { mode: 'duo', left: '', right: '', sceneMode: 'original', sceneDescription: '', background: '' };
 const active = (job: PublicJob) => job.status === 'queued' || job.status === 'submitted';
 
 function Arrow({ down = false }: { down?: boolean }) { return <span aria-hidden="true">{down ? '��' : '�J'}</span>; }
@@ -74,17 +77,20 @@ function DancePage() {
   const cost = models[0].credits;
   useEffect(() => {
     try {
-      const saved = JSON.parse(sessionStorage.getItem(STATE_KEY) ?? 'null');
+      const saved = JSON.parse(sessionStorage.getItem(STATE_KEY) ?? sessionStorage.getItem('mami:draft:v2') ?? 'null');
       if (saved && (saved.mode === 'solo' || saved.mode === 'duo')) setDraft({
         mode: saved.mode, left: typeof saved.left === 'string' ? saved.left : '',
         right: typeof saved.right === 'string' ? saved.right : '',
+        sceneMode: saved.sceneMode === 'photo' || saved.sceneMode === 'description' ? saved.sceneMode : 'original',
+        sceneDescription: typeof saved.sceneDescription === 'string' ? saved.sceneDescription.slice(0, SCENE_DESCRIPTION_LIMIT) : '',
+        background: typeof saved.background === 'string' ? saved.background : '',
       });
     } catch {} setReady(true);
   }, []);
   useEffect(() => { if (ready) try { sessionStorage.setItem(STATE_KEY, JSON.stringify(draft)); } catch {} }, [draft, ready]);
 
-  async function upload(file: File | undefined, slot: 'left' | 'right') {
-    if (!file || uploadLock.current) return;
+  async function upload(file: File | undefined, slot: 'left' | 'right' | 'background') {
+    if (!file || uploadLock.current || running || generation.submitting) return;
     setUploadError('');
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
       setUploadError('Choose a JPG, PNG or WebP photo up to 10 MB.'); return;
@@ -98,11 +104,15 @@ function DancePage() {
 
   async function submit() {
     if (submissionLock.current || running || generation.submitting || busy) return;
+    const scene = parseScene({ mode: draft.sceneMode, description: draft.sceneDescription });
+    if (!scene) { setSubmitError('Describe your scene using 1 to 600 characters.'); return; }
+    if (scene.mode === 'photo' && !draft.background) { setSubmitError('Add a background photo first.'); return; }
     submissionLock.current = true;
     setSubmitError('');
-    const input: GenerateInput = {
+    const input: GenerateInput & { scene: SceneChoice } = {
       modelId: models[0].id,
-      slots: { left: draft.left, ...(draft.mode === 'duo' ? { right: draft.right } : {}) },
+      slots: { left: draft.left, ...(draft.mode === 'duo' ? { right: draft.right } : {}), ...(scene.mode === 'photo' ? { background: draft.background } : {}) },
+      scene,
     };
     try {
       const result = await generation.generate(input);
@@ -112,6 +122,8 @@ function DancePage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     if (!draft.left || (draft.mode === 'duo' && !draft.right)) { setSubmitError('Add the selected dancer photos first.'); return; }
+    if (!parseScene({ mode: draft.sceneMode, description: draft.sceneDescription })) { setSubmitError('Describe your scene using 1 to 600 characters.'); return; }
+    if (draft.sceneMode === 'photo' && !draft.background) { setSubmitError('Add a background photo first.'); return; }
     if (!config.media.reference) { setSubmitError('The dance reference is being prepared. Please try again later.'); return; }
     if (!consent) { setSubmitError('Confirm permission for the photos before continuing.'); return; }
     if (!session.data?.user) { openSignIn(() => void submit(), 'mami_generate'); return; }
@@ -124,9 +136,9 @@ function DancePage() {
         <div className="eyebrow"><span className="live-dot" /> PHOTO �� DANCE VIDEO</div>
         <h1>Puerto Rican<br />Mami <span className="outline-type">AI.</span><span className="headline-star" aria-hidden="true">?</span></h1>
         <p className="hero-tagline">Your face.<br /><span>Those moves.</span></p>
-        <p className="hero-description">Put yourself in the dance. Add your photo, bring a friend, and let the featured dance reference lead the way.</p>
+        <p className="hero-description">Put yourself in the dance. Add your photo, bring a friend, and choose your scene. The featured reference leads the moves.</p>
         <a className="button primary hero-cta" href="#create">Make it yours <Arrow /></a>
-        <div className="hero-facts"><span>01�C02 PHOTOS</span><span>FIXED REFERENCE</span><span>NO PROMPT NEEDED</span></div>
+        <div className="hero-facts"><span>01�C02 DANCERS</span><span>FIXED ROUTINE</span><span>YOUR SCENE</span></div>
       </div>
       <div className="reference-stage" id="reference-video">
         <div className="stage-top"><span>THE MOVES START HERE</span><span className="stage-dot" /></div>
@@ -163,13 +175,19 @@ function DancePage() {
           {draft.mode === 'solo' && <p className="solo-note">Solo replaces the first dancer on the left. Other people in the clip stay.</p>}
         </div>
         <div className="motion-panel">
-          <div className="panel-title"><h3>The routine is set.</h3><span className="small-label">02 / YOUR VIDEO</span></div>
+          <div className="panel-title"><h3>Same moves. Your setting.</h3><span className="small-label">02 / YOUR VIDEO</span></div>
           <div className="fixed-reference-note">
             <span className="small-label">FEATURED DANCE REFERENCE</span>
             <h3>{config.media.reference ? 'Same moves. Your people.' : 'The reference is coming soon.'}</h3>
-            <p>We provide the choreography, camera and timing. Add your photos and we will use the fixed reference above.</p>
+            <p>The reference guides the choreography, camera, timing and sound. Keep its setting or choose a new scene below.</p>
             {config.media.reference && <a className="text-link" href="#reference-video">Watch the reference <Arrow /></a>}
           </div>
+          <SceneControls mode={draft.sceneMode} description={draft.sceneDescription} background={draft.background}
+            disabled={!!busy || running || generation.submitting} uploading={busy === 'background'}
+            onMode={sceneMode => { setDraft(d => ({ ...d, sceneMode })); setSubmitError(''); }}
+            onDescription={sceneDescription => setDraft(d => ({ ...d, sceneDescription }))}
+            onUpload={file => void upload(file, 'background')}
+            onRemove={() => setDraft(d => ({ ...d, background: '' }))} />
           <div className="output-spec"><span>OUTPUT</span><strong>720p �� follows the reference framing</strong></div>
           <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} required /><span>I have permission to use these photos. Everyone shown is 18 or older.</span></label>
           <button className="primary generate-button" type="submit" disabled={!!busy || generation.submitting || running || session.isPending || !config.media.reference}>
@@ -185,7 +203,7 @@ function DancePage() {
 
     <section className="how-section" id="how-it-works"><p className="eyebrow">02 / THE ROUTINE</p><div className="how-layout"><h2>Three steps.<br /><span className="muted">All your energy.</span></h2><div className="steps">{[
       ['Pick your people.', 'One photo for your spot, or two to bring your friend. Clear faces and visible shoulders help the model keep your look.'],
-      ['Preview the routine.', 'Watch the fixed reference above. Its choreography, camera and timing guide every generation, so there is no video to upload.'],
+      ['Choose your scene.', 'Keep the original setting, describe a new one, or add a background photo. The featured reference still guides the dance, camera and sound.'],
       ['Make it your moment.', 'Purchase credits, then generate, review and download. Check the result before sharing, and label realistic AI-created footage when you post.'],
     ].map(([title, body], i) => <article key={title}><span className="step-number">0{i + 1}</span><div><h3>{title}</h3><p>{body}</p></div></article>)}</div></div></section>
 
