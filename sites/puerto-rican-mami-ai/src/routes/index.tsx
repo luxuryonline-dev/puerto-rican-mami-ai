@@ -175,26 +175,25 @@ function DancePage() {
           {draft.mode === 'solo' && <p className="solo-note">Solo replaces the first dancer on the left. Other people in the clip stay.</p>}
         </div>
         <div className="motion-panel">
-          <div className="panel-title"><h3>Same moves. Your setting.</h3><span className="small-label">02 / YOUR VIDEO</span></div>
-          <div className="fixed-reference-note">
-            <span className="small-label">FEATURED DANCE REFERENCE</span>
-            <h3>{config.media.reference ? 'Same moves. Your people.' : 'The reference is coming soon.'}</h3>
-            <p>The reference guides the choreography, camera, timing and sound. Keep its setting or choose a new scene below.</p>
-            {config.media.reference && <a className="text-link" href="#reference-video">Watch the reference <Arrow /></a>}
-          </div>
           <SceneControls mode={draft.sceneMode} description={draft.sceneDescription} background={draft.background}
             disabled={!!busy || running || generation.submitting} uploading={busy === 'background'}
             onMode={sceneMode => { setDraft(d => ({ ...d, sceneMode })); setSubmitError(''); }}
             onDescription={sceneDescription => setDraft(d => ({ ...d, sceneDescription }))}
             onUpload={file => void upload(file, 'background')}
             onRemove={() => setDraft(d => ({ ...d, background: '' }))} />
-          <div className="output-spec"><span>OUTPUT</span><strong>720p �� follows the reference framing</strong></div>
+          <div className="routine-summary"><p>{config.media.reference ? 'The featured routine guides the moves, camera and sound.' : 'The dance reference is being prepared.'}</p>
+            {config.media.reference && <a href="#reference-video">Watch reference <Arrow /></a>}
+          </div>
+        </div>
+        <div className="creator-actions">
           <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} required /><span>I have permission to use these photos. Everyone shown is 18 or older.</span></label>
+          <div className="creator-submit">
           <button className="primary generate-button" type="submit" disabled={!!busy || generation.submitting || running || session.isPending || !config.media.reference}>
             {running ? 'Your video is in progress��' : generation.submitting ? 'Starting your video��' : config.mock ? 'Test the video flow' : 'Make my dance video'} <Arrow />
           </button>
-          <p className="button-note">{config.mock ? 'Mock mode �� reference replay �� no AI generation' : `${cost} credits per video �� paid credits required`}</p>
-          <div aria-live="polite">{(uploadError || submitError) && <p className="error">{uploadError || submitError}</p>}
+          <p className="button-note">{config.mock ? 'Mock mode �� reference replay �� no AI generation' : `720p �� ${cost} credits per video`}</p>
+          </div>
+          <div className="creator-errors" aria-live="polite">{(uploadError || submitError) && <p className="error">{uploadError || submitError}</p>}
           {generation.error && <p className="error">{generation.error.code === 'insufficient_credits' || generation.error.code === 'payment_required' ? <>Purchase credits to generate a video. <PricingLink source="mami_credits">View credit packs</PricingLink></> : generation.error.code === 'login_required' ? <button type="button" className="text-button" onClick={() => openSignIn(() => void submit())}>Sign in to continue</button> : generation.error.message}</p>}</div>
         </div>
       </form>

@@ -48,6 +48,6 @@ export function SceneControls(props: Props) {
         onChange={event => props.onDescription(event.target.value)} />
       <div className="scene-description-meta"><p id="scene-description-hint">Describe the place and lighting. The reference still guides the dance and sound.</p><span>{props.description.length}/{SCENE_DESCRIPTION_LIMIT}</span></div>
     </div>}
-    <p className="input-hint">{props.mode === 'original' ? 'The original scene is kept by default.' : 'AI reimagines the setting. Background details, movement and sound may vary.'}</p>
+    {props.mode !== 'original' && <p className="input-hint">AI reimagines the setting. Background details, movement and sound may vary.</p>}
   </fieldset>;
 }
